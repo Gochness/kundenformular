@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Auftragsklärung vor Prüfeinsatz</title>
+<style>
+:root{--bg:#f5f7fb;--card:#fff;--text:#172033;--muted:#667085;--line:#dfe5ee;--blue:#2457d6;--green:#198754;--soft:#eef3ff}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:15px system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+.wrap{max-width:920px;margin:auto;padding:24px}
+header{background:#17365d;color:#fff;padding:22px;border-radius:16px;margin-bottom:18px}
+header h1{margin:0 0 5px;font-size:25px}
+header p{margin:0;opacity:.9}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px;margin:14px 0}
+.meta{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.meta .item{background:#f8fafc;border:1px solid var(--line);border-radius:11px;padding:11px}
+.meta b{display:block;font-size:12px;color:var(--muted);margin-bottom:3px}
+.notice{background:var(--soft);border:1px solid #cdd8fb;border-radius:12px;padding:13px;margin-bottom:15px}
+.q{border-top:1px solid var(--line);padding:16px 0}
+.q:first-child{border-top:0}
+.qtitle{font-weight:700;margin-bottom:10px}
+.choices{display:flex;flex-wrap:wrap;gap:8px}
+.choice{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line);padding:9px 11px;border-radius:10px;background:#fff;cursor:pointer}
+.choice:has(input:checked){border-color:#8eacf1;background:#eef3ff}
+.note,.contactgrid input{width:100%;margin-top:9px;padding:10px;border:1px solid var(--line);border-radius:9px;font:inherit}
+.contactgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.done{background:#edf9f3;border:1px solid #bfe7d1;border-radius:11px;padding:11px}
+.done b{color:#12673f}
+.done button{margin-left:8px}
+button{border:0;border-radius:10px;padding:10px 13px;font-weight:700;cursor:pointer}
+.primary{background:var(--blue);color:#fff}
+.secondary{background:#e9eef5;color:#26364d}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}
+textarea#result{width:100%;min-height:220px;margin-top:12px;padding:11px;border:1px solid var(--line);border-radius:10px;font:inherit}
+.small{font-size:13px;color:var(--muted)}
+.hidden{display:none}
+@media(max-width:700px){.meta,.contactgrid{grid-template-columns:1fr}.wrap{padding:12px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>Auftragsklärung vor dem Prüfeinsatz</h1>
+  <p>Bitte ergänzen Sie nur noch die offenen Punkte.</p>
+</header>
+
+<div class="card">
+  <div class="notice"><b>Ihre bereits bekannten Kunden- und Auftragsdaten wurden übernommen.</b><br>
+  Sie müssen diese Angaben nicht erneut eingeben. Bereits geklärte Fragen sind als erledigt markiert und können bei Bedarf geändert werden.</div>
+  <div id="meta" class="meta"></div>
+</div>
+
+<div class="card">
+  <div id="questions"></div>
+  <div class="actions">
+    <button class="primary" type="button" onclick="finish()">Antworten abschließen</button>
+    <button class="secondary" type="button" onclick="copyResult()">Zusammenfassung kopieren</button>
+  </div>
+  <textarea id="result" class="hidden" readonly></textarea>
+  <div id="doneMsg" class="small" style="margin-top:10px"></div>
+</div>
+</div>
+
+<script>
+const ITEMS = [
+["Abschaltung möglich?",["Ja","Nein","Nur in Absprache","Sonstiges"],"single"],
+["Prüffrist",["6 Monate","12 Monate","24 Monate","48 Monate","Andere"],"single"],
+["Schaltpläne",["Vorhanden","Sollten vorhanden sein","Nicht vorhanden","Unbekannt"],"single"],
+["Umgang mit Defekten",["Standardvorgehen","Abweichendes Vorgehen"],"single"],
+["PSA",["Standard-PSA","Sicherheitsschuhe","Schutzbrille","Warnweste","Helm","Gehörschutz","Sonstige"],"multi"],
+["Besonderheiten",["Keine","Ja"],"single"],
+["Ansprechpartner am ersten Tag",[],"contact2"],
+["Haustechnik / technischer Ansprechpartner",[],"contact"],
+["Treffpunkt / Anmeldung",["Pforte","Empfang","Haustechnik","Direkt vor Ort","Andere"],"single"],
+["Parkplatz",["Direkt vor dem Haus","Besucherparkplatz","Vorhanden","Nicht möglich","Noch klären"],"single"],
+["Startzeit",["06:00 Uhr","07:00 Uhr","08:00 Uhr","Andere"],"single"],
+["Arbeitsplatz / Tisch / Rolltisch",["Arbeitsplatz / Tisch vorhanden","Rolltisch vorhanden","Nicht vorhanden","Noch klären"],"single"],
+["WLAN",["Ja","Gast-WLAN","Nein","Noch klären"],"single"],
+["Arbeits- / Betriebszeiten",["Keine besonderen Einschränkungen","Einschränkungen"],"single"],
+["Zutritt",["Frei zugänglich","Schlüssel nötig","Ausweis nötig","Begleitung nötig","Nicht relevant"],"single"],
+["Fremdfirmen- / Sicherheitsunterweisung",["Nicht erforderlich","Erforderlich","Am ersten Tag","Vorab"],"single"],
+["Schaltschränke / Technikräume",["Zugänglich","Schlüssel nötig","Begleitung nötig","Nicht relevant"],"single"],
+["Besondere Hilfsmittel",["Keine","Leiter","Hubarbeitsbühne","Kundenseitig vorhanden","Andere"],"multi"],
+["Laufende Produktion",["Kein Problem","Nur in Absprache","Einschränkungen","Nicht relevant"],"single"],
+["Gibt es sonst etwas, das unsere Prüfer vor dem ersten Einsatztag wissen müssen?",["Nein","Ja"],"single"]
+];
+
+const params = new URLSearchParams(location.search);
+function decodeB64UrlUnicode(s){
+  try{
+    s=s.replace(/-/g,'+').replace(/_/g,'/');
+    while(s.length%4)s+='=';
+    const bin=atob(s), bytes=Uint8Array.from(bin,c=>c.charCodeAt(0));
+    return new TextDecoder().decode(bytes);
+  }catch(e){return ''}
+}
+let pre = [];
+try{
+  const raw=params.get('answers');
+  if(raw) pre=JSON.parse(decodeB64UrlUnicode(raw));
+}catch(e){pre=[]}
+while(pre.length<ITEMS.length) pre.push({values:[],note:'',contact:{}});
+
+const metaFields = [
+  ["Kunde / Firma","name"],["Auftrag / CRM","crm"],["Standort / Adresse","address"],
+  ["Betreff / Auftrag","subject"],["Ansprechpartner","contact"],["E-Mail","email"],
+  ["Einsatztermin","date"],["Product Line","productLine"],["Lieferung PLZ","deliveryZip"],
+  ["Lieferung Ort","deliveryCity"],["Projektleitung","projectManager"]
+];
+const meta = document.getElementById('meta');
+let shown=0;
+metaFields.forEach(([label,key])=>{
+  const v=params.get(key);
+  if(!v)return;
+  shown++;
+  const d=document.createElement('div'); d.className='item';
+  d.innerHTML='<b>'+esc(label)+'</b>'+esc(v);
+  meta.appendChild(d);
+});
+if(!shown) meta.innerHTML='<div class="small">Keine Stammdaten im Link enthalten.</div>';
+
+const qwrap=document.getElementById('questions');
+
+function esc(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
+function isAnswered(o){
+  if(!o)return false;
+  if((o.values||[]).length) return true;
+  if((o.note||'').trim()) return true;
+  const c=o.contact||{};
+  return Object.values(c).some(Boolean);
+}
+function valueText(o){
+  const parts=[...(o.values||[])];
+  const c=o.contact||{};
+  if(c.name||c.phone||c.email1) parts.push([c.name,c.phone,c.email1].filter(Boolean).join(' – '));
+  if(c.name2||c.phone2||c.email2) parts.push([c.name2,c.phone2,c.email2].filter(Boolean).join(' – '));
+  if(o.note) parts.push(o.note);
+  return parts.join(', ');
+}
+function makeEditor(i){
+  const it=ITEMS[i], o=pre[i]||{values:[],note:'',contact:{}};
+  const q=document.createElement('div'); q.className='q'; q.dataset.i=i;
+  const title=document.createElement('div'); title.className='qtitle'; title.textContent=it[0]; q.appendChild(title);
+
+  if(isAnswered(o)){
+    const done=document.createElement('div'); done.className='done';
+    done.innerHTML='<b>Bereits geklärt:</b> '+esc(valueText(o))+' <button type="button" class="secondary" onclick="editQuestion('+i+')">Ändern</button>';
+    q.appendChild(done);
+    q.dataset.done='1';
+  }
+
+  const editor=document.createElement('div'); editor.className='editor'+(isAnswered(o)?' hidden':'');
+  if(it[2]==='contact2'){
+    const c=o.contact||{};
+    editor.innerHTML='<div class="contactgrid">'
+      +'<input class="name" placeholder="Ansprechpartner 1 – Name" value="'+esc(c.name||'')+'">'
+      +'<input class="phone" placeholder="Telefon" value="'+esc(c.phone||'')+'">'
+      +'<input class="email1" type="email" placeholder="E-Mail" value="'+esc(c.email1||'')+'">'
+      +'<input class="name2" placeholder="Ansprechpartner 2 – Name" value="'+esc(c.name2||'')+'">'
+      +'<input class="phone2" placeholder="Telefon" value="'+esc(c.phone2||'')+'">'
+      +'<input class="email2" type="email" placeholder="E-Mail" value="'+esc(c.email2||'')+'">'
+      +'</div>';
+  } else if(it[2]==='contact'){
+    const c=o.contact||{};
+    editor.innerHTML='<div class="contactgrid">'
+      +'<input class="name" placeholder="Name" value="'+esc(c.name||'')+'">'
+      +'<input class="phone" placeholder="Telefon" value="'+esc(c.phone||'')+'">'
+      +'<input class="email1" type="email" placeholder="E-Mail" value="'+esc(c.email1||'')+'">'
+      +'</div>';
+  } else {
+    const ch=document.createElement('div'); ch.className='choices';
+    it[1].forEach(v=>{
+      const l=document.createElement('label'); l.className='choice';
+      const inp=document.createElement('input'); inp.type=it[2]==='multi'?'checkbox':'radio'; inp.name='q'+i; inp.value=v;
+      if((o.values||[]).includes(v)) inp.checked=true;
+      const s=document.createElement('span'); s.textContent=v;
+      l.append(inp,s); ch.appendChild(l);
+    });
+    editor.appendChild(ch);
+    const n=document.createElement('input'); n.className='note'; n.placeholder='Notiz / Ergänzung (optional)'; n.value=o.note||''; editor.appendChild(n);
+  }
+  q.appendChild(editor);
+  qwrap.appendChild(q);
+}
+ITEMS.forEach((_,i)=>makeEditor(i));
+
+function editQuestion(i){
+  const q=document.querySelector('.q[data-i="'+i+'"]');
+  const done=q.querySelector('.done'); if(done) done.remove();
+  q.querySelector('.editor').classList.remove('hidden');
+  q.dataset.done='0';
+}
+
+function collect(){
+  return [...document.querySelectorAll('.q')].map((q,i)=>{
+    const old=pre[i]||{values:[],note:'',contact:{}};
+    if(q.dataset.done==='1') return old;
+    const ed=q.querySelector('.editor');
+    const o={values:[...ed.querySelectorAll('input:checked')].map(x=>x.value),note:ed.querySelector('.note')?.value||'',contact:{}};
+    const c={};
+    ['name','phone','email1','name2','phone2','email2'].forEach(cls=>{
+      const el=ed.querySelector('.'+cls); if(el) c[cls]=el.value.trim();
+    });
+    o.contact=c;
+    return o;
+  });
+}
+function buildSummary(){
+  const a=collect(), lines=[];
+  const customer=params.get('name'); if(customer) lines.push('Kunde: '+customer);
+  const crm=params.get('crm'); if(crm) lines.push('Auftrag / CRM: '+crm);
+  if(lines.length) lines.push('');
+  a.forEach((o,i)=>{ if(isAnswered(o)) lines.push(ITEMS[i][0].replace(/\?$/,'')+': '+valueText(o)); });
+  return lines.join('\n');
+}
+function finish(){
+  const t=buildSummary(), box=document.getElementById('result');
+  box.value=t; box.classList.remove('hidden');
+  document.getElementById('doneMsg').textContent='Fertig. Die Angaben sind vollständig zusammengestellt.';
+  box.scrollIntoView({behavior:'smooth',block:'center'});
+}
+async function copyResult(){
+  const t=buildSummary(); document.getElementById('result').value=t;
+  try{await navigator.clipboard.writeText(t);document.getElementById('doneMsg').textContent='Zusammenfassung wurde kopiert.'}
+  catch(e){const b=document.getElementById('result');b.classList.remove('hidden');b.select();document.execCommand('copy')}
+}
+</script>
+</body>
+</html>
