@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Auftragsklärung vor Prüfeinsatz</title>
+<title>Auftragsklärung vor Prüfeinsatz – V3</title>
 <style>
 :root{--bg:#f5f7fb;--card:#fff;--text:#172033;--muted:#667085;--line:#dfe5ee;--blue:#2457d6;--green:#198754;--soft:#eef3ff}
 *{box-sizing:border-box}
@@ -86,22 +86,30 @@ const ITEMS = [
 ["Gibt es sonst etwas, das unsere Prüfer vor dem ersten Einsatztag wissen müssen?",["Nein","Ja"],"single"]
 ];
 
-const params = new URLSearchParams(location.search);
-function decodeB64UrlUnicode(s){
-  try{
-    s=s.replace(/-/g,'+').replace(/_/g,'/');
-    while(s.length%4)s+='=';
-    const bin=atob(s), bytes=Uint8Array.from(bin,c=>c.charCodeAt(0));
-    return new TextDecoder().decode(bytes);
-  }catch(e){return ''}
+let payload={};
+function b64UrlToBytes(s){
+  s=s.replace(/-/g,'+').replace(/_/g,'/');
+  while(s.length%4)s+='=';
+  const bin=atob(s);
+  return Uint8Array.from(bin,c=>c.charCodeAt(0));
 }
+async function unpackPayload(){
+  const m=location.hash.match(/(?:^#|[&#])p=([^&]+)/);
+  if(!m)return {};
+  const token=m[1], mode=token[0], bytes=b64UrlToBytes(token.slice(1));
+  try{
+    let raw=bytes;
+    if(mode==='z' && 'DecompressionStream' in window){
+      const ds=new DecompressionStream('deflate-raw');
+      const stream=new Blob([bytes]).stream().pipeThrough(ds);
+      raw=new Uint8Array(await new Response(stream).arrayBuffer());
+    }
+    return JSON.parse(new TextDecoder().decode(raw));
+  }catch(e){return {}}
+}
+const KEYMAP={crm:'c',name:'n',address:'a',subject:'s',contact:'p',email:'e',date:'d',productLine:'l',deliveryZip:'z',deliveryCity:'y',projectManager:'m'};
+const params={get(k){const short=KEYMAP[k]; return short && payload[short]!=null ? String(payload[short]) : null;}};
 let pre = [];
-try{
-  const raw=params.get('answers');
-  if(raw) pre=JSON.parse(decodeB64UrlUnicode(raw));
-}catch(e){pre=[]}
-while(pre.length<ITEMS.length) pre.push({values:[],note:'',contact:{}});
-
 const metaFields = [
   ["Kunde / Firma","name"],["Auftrag / CRM","crm"],["Standort / Adresse","address"],
   ["Betreff / Auftrag","subject"],["Ansprechpartner","contact"],["E-Mail","email"],
@@ -109,81 +117,32 @@ const metaFields = [
   ["Lieferung Ort","deliveryCity"],["Projektleitung","projectManager"]
 ];
 const meta = document.getElementById('meta');
-let shown=0;
-metaFields.forEach(([label,key])=>{
-  const v=params.get(key);
-  if(!v)return;
-  shown++;
-  const d=document.createElement('div'); d.className='item';
-  d.innerHTML='<b>'+esc(label)+'</b>'+esc(v);
-  meta.appendChild(d);
-});
-if(!shown) meta.innerHTML='<div class="small">Keine Stammdaten im Link enthalten.</div>';
-
 const qwrap=document.getElementById('questions');
 
-function esc(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
-function isAnswered(o){
-  if(!o)return false;
-  if((o.values||[]).length) return true;
-  if((o.note||'').trim()) return true;
-  const c=o.contact||{};
-  return Object.values(c).some(Boolean);
-}
-function valueText(o){
-  const parts=[...(o.values||[])];
-  const c=o.contact||{};
-  if(c.name||c.phone||c.email1) parts.push([c.name,c.phone,c.email1].filter(Boolean).join(' – '));
-  if(c.name2||c.phone2||c.email2) parts.push([c.name2,c.phone2,c.email2].filter(Boolean).join(' – '));
-  if(o.note) parts.push(o.note);
-  return parts.join(', ');
-}
-function makeEditor(i){
-  const it=ITEMS[i], o=pre[i]||{values:[],note:'',contact:{}};
-  const q=document.createElement('div'); q.className='q'; q.dataset.i=i;
-  const title=document.createElement('div'); title.className='qtitle'; title.textContent=it[0]; q.appendChild(title);
-
-  if(isAnswered(o)){
-    const done=document.createElement('div'); done.className='done';
-    done.innerHTML='<b>Bereits geklärt:</b> '+esc(valueText(o))+' <button type="button" class="secondary" onclick="editQuestion('+i+')">Ändern</button>';
-    q.appendChild(done);
-    q.dataset.done='1';
-  }
-
-  const editor=document.createElement('div'); editor.className='editor'+(isAnswered(o)?' hidden':'');
-  if(it[2]==='contact2'){
-    const c=o.contact||{};
-    editor.innerHTML='<div class="contactgrid">'
-      +'<input class="name" placeholder="Ansprechpartner 1 – Name" value="'+esc(c.name||'')+'">'
-      +'<input class="phone" placeholder="Telefon" value="'+esc(c.phone||'')+'">'
-      +'<input class="email1" type="email" placeholder="E-Mail" value="'+esc(c.email1||'')+'">'
-      +'<input class="name2" placeholder="Ansprechpartner 2 – Name" value="'+esc(c.name2||'')+'">'
-      +'<input class="phone2" placeholder="Telefon" value="'+esc(c.phone2||'')+'">'
-      +'<input class="email2" type="email" placeholder="E-Mail" value="'+esc(c.email2||'')+'">'
-      +'</div>';
-  } else if(it[2]==='contact'){
-    const c=o.contact||{};
-    editor.innerHTML='<div class="contactgrid">'
-      +'<input class="name" placeholder="Name" value="'+esc(c.name||'')+'">'
-      +'<input class="phone" placeholder="Telefon" value="'+esc(c.phone||'')+'">'
-      +'<input class="email1" type="email" placeholder="E-Mail" value="'+esc(c.email1||'')+'">'
-      +'</div>';
-  } else {
-    const ch=document.createElement('div'); ch.className='choices';
-    it[1].forEach(v=>{
-      const l=document.createElement('label'); l.className='choice';
-      const inp=document.createElement('input'); inp.type=it[2]==='multi'?'checkbox':'radio'; inp.name='q'+i; inp.value=v;
-      if((o.values||[]).includes(v)) inp.checked=true;
-      const s=document.createElement('span'); s.textContent=v;
-      l.append(inp,s); ch.appendChild(l);
+async function init(){
+  payload=await unpackPayload();
+  pre=ITEMS.map(()=>({values:[],note:'',contact:{}}));
+  if(Array.isArray(payload.q)){
+    payload.q.forEach(x=>{
+      if(!x || !Number.isInteger(x.i) || x.i<0 || x.i>=ITEMS.length)return;
+      pre[x.i]={values:Array.isArray(x.v)?x.v:[],note:x.n||'',contact:x.c||{}};
     });
-    editor.appendChild(ch);
-    const n=document.createElement('input'); n.className='note'; n.placeholder='Notiz / Ergänzung (optional)'; n.value=o.note||''; editor.appendChild(n);
   }
-  q.appendChild(editor);
-  qwrap.appendChild(q);
+  meta.innerHTML='';
+  let shown=0;
+  metaFields.forEach(([label,key])=>{
+    const v=params.get(key);
+    if(!v)return;
+    shown++;
+    const d=document.createElement('div'); d.className='item';
+    d.innerHTML='<b>'+esc(label)+'</b>'+esc(v);
+    meta.appendChild(d);
+  });
+  if(!shown) meta.innerHTML='<div class="small">Keine Stammdaten im Link enthalten.</div>';
+  qwrap.innerHTML='';
+  ITEMS.forEach((_,i)=>makeEditor(i));
 }
-ITEMS.forEach((_,i)=>makeEditor(i));
+
 
 function editQuestion(i){
   const q=document.querySelector('.q[data-i="'+i+'"]');
@@ -225,6 +184,7 @@ async function copyResult(){
   try{await navigator.clipboard.writeText(t);document.getElementById('doneMsg').textContent='Zusammenfassung wurde kopiert.'}
   catch(e){const b=document.getElementById('result');b.classList.remove('hidden');b.select();document.execCommand('copy')}
 }
+init();
 </script>
 </body>
 </html>
